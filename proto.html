@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agri-Marketplace</title>
+    <!-- React Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel to transpile JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Google Fonts for a nicer look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        /* Basic CSS Reset and Body Styles */
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        #root {
+            max-width: 450px; /* Simulate mobile screen width */
+            margin: auto;
+            background-color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        /* Hide scrollbar for a cleaner look */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+        /* Animation for listening state */
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+        }
+        .listening {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useRef } = React;
+
+      // --- ICONS (Using simple text/emoji as placeholders for SVG icons) ---
+      const SearchIcon = () => <span style={styles.icon}>🔍</span>;
+      const MicIcon = ({ isListening }) => <span style={{...styles.icon, ...(isListening ? styles.listening : {})}}>🎤</span>;
+      const HomeIcon = () => <span style={styles.navIcon}>🏠</span>;
+      const ChatIcon = () => <span style={styles.navIcon}>💬</span>;
+      const CartIcon = ({ count }) => (
+          <div style={{ position: 'relative' }}>
+              <span style={styles.navIcon}>🛒</span>
+              {count > 0 && <span style={styles.cartBadge}>{count}</span>}
+          </div>
+      );
+      const ProfileIcon = () => <span style={styles.navIcon}>👤</span>;
+      const BackIcon = () => <span style={styles.icon}>⬅</span>;
+      const SendIcon = () => <span style={styles.icon}>➡</span>;
+      const CameraIcon = () => <span style={{fontSize: '50px'}}>📷</span>;
+
+      // --- MOCK DATA ---
+      const MOCK_PRODUCTS_DATA = {
+        seeds: [
+          { id: 's1', name: 'Hybrid Maize Seeds', price: 250, unit: 'kg', image: 'https://placehold.co/400x400/22c55e/ffffff?text=Maize+Seeds', description: 'High-yield, drought-resistant hybrid maize seeds. Suitable for all seasons.' },
+          { id: 's2', name: 'Organic Tomato Seeds', price: 150, unit: 'pack', image: 'https://placehold.co/400x400/ef4444/ffffff?text=Tomato+Seeds', description: 'Certified organic tomato seeds for a healthy and bountiful harvest.' },
+          { id: 's3', name: 'Basmati Rice Seeds', price: 300, unit: 'kg', image: 'https://placehold.co/400x400/f59e0b/ffffff?text=Rice+Seeds', description: 'Premium quality Basmati rice seeds known for their long grains and aroma.' },
+        ],
+        fertilizers: [
+          { id: 'f1', name: 'Urea Fertilizer', price: 500, unit: 'bag (50kg)', image: 'https://placehold.co/400x400/3b82f6/ffffff?text=Urea', description: 'Nitrogen-rich urea fertilizer for promoting lush green growth in plants.' },
+          { id: 'f2', name: 'DAP Fertilizer', price: 1200, unit: 'bag (50kg)', image: 'https://placehold.co/400x400/8b5cf6/ffffff?text=DAP', description: 'Di-ammonium Phosphate, an excellent source of phosphate and nitrogen for plant nutrition.' },
+        ],
+        tractors: [
+          { id: 't1', name: '55 HP Farm Tractor', price: 5000, unit: 'day (rental)', image: 'https://placehold.co/400x400/78716c/ffffff?text=Tractor', description: 'Powerful 55 HP tractor available for daily rental. Comes with a licensed driver.' },
+          { id: 't2', name: 'Mini Tractor', price: 2500, unit: 'day (rental)', image: 'https://placehold.co/400x400/78716c/ffffff?text=Mini+Tractor', description: 'Compact and efficient mini tractor, perfect for small farms and orchards. Available for rent.' },
+        ],
+      };
+
+      // --- Reusable Modal Component ---
+      const Modal = ({ children, onClose }) => (
+          <div style={styles.modalBackdrop}>
+              <div style={styles.modalContent}>
+                  <button style={styles.modalCloseButton} onClick={onClose}>&times;</button>
+                  {children}
+              </div>
+          </div>
+      );
+
+      // --- COMPONENTS ---
+      const ProductCard = ({ product, onPress }) => (
+        <div style={styles.productCard} onClick={() => onPress(product)}>
+          <img src={product.image} style={styles.productImage} alt={product.name} onError={(e) => e.target.src = 'https://placehold.co/400x400/cccccc/ffffff?text=Image+Error'} />
+          <div style={styles.productInfo}>
+            <p style={styles.productName}>{product.name}</p>
+            <p style={styles.productPrice}>₹{product.price} / {product.unit}</p>
+          </div>
+        </div>
+      );
+      
+      const FormattedBotResponse = ({ text }) => {
+        const formatText = (inputText) => {
+            if (!inputText) return '';
+            // Bold: *text*
+            let html = inputText.replace(/\*(.*?)\*/g, '<strong>$1</strong>');
+            // Convert lines starting with "* " into list items
+            const lines = html.split('\n');
+            const processed = lines.map(line => {
+                if (line.trim().startsWith('* ')) {
+                    return `<li>${line.trim().substring(2)}</li>`;
+                }
+                return line;
+            }).join('');
+            if (processed.includes('<li>')) {
+                html = `<ul>${processed}</ul>`;
+            } else {
+                html = processed;
+            }
+            return html.replace(/\n/g, '<br />');
+        };
+
+        return <p style={styles.chatText} dangerouslySetInnerHTML={{ __html: formatText(text) }} />;
+      };
+
+
+      // --- SCREENS ---
+      const LoginScreen = ({ onLogin }) => {
+          const [loginMethod, setLoginMethod] = useState('email'); // 'email' or 'phone'
+          const [identifier, setIdentifier] = useState('');
+          const [password, setPassword] = useState('');
+
+          const handleLogin = (e) => {
+              e.preventDefault();
+              if (identifier && password) {
+                  const user = loginMethod === 'email' ? { email: identifier } : { phone: identifier };
+                  onLogin(user);
+              } else {
+                  alert(`Please enter your ${loginMethod} and password.`);
+              }
+          };
+
+          return (
+              <div style={styles.loginContainer}>
+                  <h1 style={styles.loginTitle}>Agri-Marketplace</h1>
+                  
+                  <div style={styles.loginToggle}>
+                      <button 
+                          onClick={() => setLoginMethod('email')} 
+                          style={loginMethod === 'email' ? styles.toggleButtonActive : styles.toggleButton}
+                      >
+                          Email
+                      </button>
+                      <button 
+                          onClick={() => setLoginMethod('phone')} 
+                          style={loginMethod === 'phone' ? styles.toggleButtonActive : styles.toggleButton}
+                      >
+                          Phone Number
+                      </button>
+                  </div>
+
+                  <form onSubmit={handleLogin} style={styles.loginForm}>
+                      {loginMethod === 'email' ? (
+                          <input 
+                              type="email" 
+                              placeholder="Email" 
+                              value={identifier} 
+                              onChange={(e) => setIdentifier(e.target.value)}
+                              style={styles.loginInput}
+                              required
+                          />
+                      ) : (
+                          <input 
+                              type="tel" 
+                              placeholder="Phone Number" 
+                              value={identifier} 
+                              onChange={(e) => setIdentifier(e.target.value)}
+                              style={styles.loginInput}
+                              required
+                          />
+                      )}
+                      <input 
+                          type="password" 
+                          placeholder="Password" 
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          style={styles.loginInput}
+                          required
+                      />
+                      <button type="submit" style={{...styles.button, ...styles.buyButton, width: '100%'}}>
+                          Login
+                      </button>
+                  </form>
+              </div>
+          );
+      };
+
+      const HomeScreen = ({ setActiveScreen, setSelectedProduct, products }) => {
+        const [searchQuery, setSearchQuery] = useState('');
+        const [filteredProducts, setFilteredProducts] = useState(products);
+
+        useEffect(() => {
+          const allProducts = [
+            ...products.seeds,
+            ...products.fertilizers,
+            ...products.tractors,
+          ];
+          if (searchQuery.trim() === '') {
+            setFilteredProducts(products);
+          } else {
+            const filtered = allProducts.filter(p =>
+              p.name.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+            setFilteredProducts({
+              seeds: filtered.filter(p => products.seeds.some(s => s.id === p.id)),
+              fertilizers: filtered.filter(p => products.fertilizers.some(f => f.id === p.id)),
+              tractors: filtered.filter(p => products.tractors.some(t => t.id === p.id)),
+            });
+          }
+        }, [searchQuery, products]);
+
+        const handleProductPress = (product) => {
+          setSelectedProduct(product);
+          setActiveScreen('ProductDetail');
+        }
+
+        return (
+          <div style={styles.screen} className="hide-scrollbar">
+            <div style={styles.header}>
+              <h1 style={styles.headerTitle}>Hello, Farmer!</h1>
+              <p style={styles.headerSubtitle}>Find the best products for your farm</p>
+            </div>
+
+            <div style={styles.searchContainer}>
+              <SearchIcon />
+              <input
+                type="text"
+                style={styles.searchInput}
+                placeholder="Search for seeds, tractors..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <button style={styles.iconButton} onClick={() => setActiveScreen('Chatbot')}>
+                <MicIcon />
+              </button>
+            </div>
+
+            <div style={{padding: '0 16px 16px'}}>
+                <button onClick={() => setActiveScreen('Sell')} style={{...styles.button, ...styles.buyButton, width: '100%'}}>
+                    + Sell Your Product
+                </button>
+            </div>
+
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>Tractors for Rent</h2>
+              <div style={styles.horizontalScroll}>
+                {filteredProducts.tractors.map(item => <ProductCard key={item.id} product={item} onPress={handleProductPress} />)}
+              </div>
+            </div>
+
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>Seeds</h2>
+              <div style={styles.horizontalScroll}>
+                {filteredProducts.seeds.map(item => <ProductCard key={item.id} product={item} onPress={handleProductPress} />)}
+              </div>
+            </div>
+
+            <div style={styles.section}>
+              <h2 style={styles.sectionTitle}>Fertilizers</h2>
+              <div style={styles.horizontalScroll}>
+                {filteredProducts.fertilizers.map(item => <ProductCard key={item.id} product={item} onPress={handleProductPress} />)}
+              </div>
+            </div>
+          </div>
+        );
+      };
+      
+      const ProductDetailScreen = ({ product, setActiveScreen, onBuy, onRent }) => {
+          if (!product) {
+              return (
+                  <div style={styles.screen}>
+                      <p>No product selected.</p>
+                      <button onClick={() => setActiveScreen('Home')}>Go Back</button>
+                  </div>
+              )
+          }
+
+          return (
+              <div style={styles.screen} className="hide-scrollbar">
+                  <div style={styles.detailHeader}>
+                      <button style={styles.iconButton} onClick={() => setActiveScreen('Home')}>
+                          <BackIcon />
+                      </button>
+                      <h2 style={styles.detailTitle}>Product Details</h2>
+                      <div style={{width: 24}} /> {/* Spacer */}
+                  </div>
+                  <img src={product.image} style={styles.detailImage} alt={product.name} onError={(e) => e.target.src = 'https://placehold.co/600x400/cccccc/ffffff?text=Image+Error'}/>
+                  <div style={styles.detailInfoContainer}>
+                      <h1 style={styles.detailProductName}>{product.name}</h1>
+                      <p style={styles.detailProductPrice}>₹{product.price} / {product.unit}</p>
+                      <p style={styles.detailProductDescription}>{product.description}</p>
+                  </div>
+                  <div style={styles.buttonContainer}>
+                      <button style={{...styles.button, ...styles.rentButton}} onClick={() => onRent(product)}>
+                          Rent Now
+                      </button>
+                      <button style={{...styles.button, ...styles.buyButton}} onClick={() => onBuy(product)}>
+                          Buy Now
+                      </button>
+                  </div>
+              </div>
+          )
+      }
+
+      const ChatbotScreen = ({ setActiveScreen }) => {
+        const [messages, setMessages] = useState([
+          { id: 1, text: 'Hello! I am AgriBot. Click the mic and ask me any agricultural question.', sender: 'bot' },
+        ]);
+        const [input, setInput] = useState('');
+        const [isListening, setIsListening] = useState(false);
+        const [isLoading, setIsLoading] = useState(false);
+        const [status, setStatus] = useState('');
+        const chatAreaRef = useRef(null);
+        const recognitionRef = useRef(null);
+
+        const speak = (text) => {
+            try {
+                // Clean text for speech by removing markdown characters
+                const cleanText = (text || '').replace(/[*#]/g, '');
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                window.speechSynthesis.speak(utterance);
+            } catch (error) {
+                console.error("Speech synthesis failed:", error);
+            }
+        };
+
+        useEffect(() => {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                setStatus("Speech Recognition is not supported in this browser.");
+                return;
+            }
+            
+            const recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => setIsListening(true);
+            recognition.onend = () => setIsListening(false);
+            
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error:", event.error);
+                if (event.error === 'no-speech') {
+                    setStatus("I didn't hear anything. Please try again.");
+                } else if (event.error === 'not-allowed') {
+                    setStatus("Microphone access denied. Please enable it in browser settings.");
+                } else {
+                    setStatus("An error occurred during speech recognition.");
+                }
+                setIsListening(false);
+                setTimeout(() => setStatus(''), 4000);
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript.trim()) {
+                    setInput(transcript);
+                    handleSend(transcript);
+                } else {
+                    setStatus("Couldn't recognize speech. Please try again.");
+                    setTimeout(() => setStatus(''), 4000);
+                }
+            };
+            
+            recognitionRef.current = recognition;
+            speak(messages[0].text);
+
+            return () => window.speechSynthesis.cancel();
+        }, []);
+
+        useEffect(() => {
+            if (chatAreaRef.current) {
+                chatAreaRef.current.scrollTop = chatAreaRef.current.scrollHeight;
+            }
+        }, [messages]);
+
+        const handleVoiceInput = () => {
+            if (!recognitionRef.current) return;
+            if (isListening) {
+                recognitionRef.current.stop();
+            } else {
+                recognitionRef.current.start();
+            }
+        };
+
+        const getApiResponse = async (prompt, history) => {
+            setIsLoading(true);
+            setStatus('');
+            // Demo mode: if no API key is provided, return a fallback response
+            const apiKey = ""; // set your API key here for real requests
+            if (!apiKey) {
+                setIsLoading(false);
+                return "Demo: AI API key not set. Try asking simple questions about crops, fertilizers, or equipment.";
+            }
+
+            const systemInstruction = "Please format your response in a clear, point-by-point list where applicable. Use asterisks for bullet points.";
+            const chatHistory = history.slice(1).map(msg => ({
+                role: msg.sender === 'bot' ? 'assistant' : 'user',
+                content: msg.text
+            }));
+            // Build payload according to expected API shape
+            const payload = {
+              system: systemInstruction,
+              messages: [...chatHistory, { role: 'user', content: prompt }]
+            };
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`API call failed: ${response.status}`);
+                const result = await response.json();
+                
+                // Adjust according to real API response shape
+                if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
+                    return result.candidates[0].content.parts[0].text;
+                } else if (result.output?.[0]?.content?.[0]?.text) {
+                    return result.output[0].content[0].text;
+                } else {
+                    return "I'm sorry, I couldn't generate a response.";
+                }
+            } catch (error) {
+                console.error("Error calling Gemini API:", error);
+                return "There was an error connecting to the AI. Please try again.";
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        const handleSend = async (textToSend) => {
+          const userMessage = textToSend || input;
+          if (userMessage.trim() === '') return;
+
+          const newMessages = [...messages, { id: Date.now(), text: userMessage, sender: 'user' }];
+          setMessages(newMessages);
+          setInput('');
+
+          const botResponse = await getApiResponse(userMessage, newMessages);
+          
+          setMessages(prev => [...prev, { id: Date.now() + 1, text: botResponse, sender: 'bot' }]);
+          speak(botResponse);
+        };
+        
+        const handleKeyPress = (e) => {
+            if (e.key === 'Enter') handleSend();
+        }
+
+        return (
+            <div style={{...styles.screen, display: 'flex', flexDirection: 'column'}}>
+              <div style={styles.detailHeader}>
+                  <button style={styles.iconButton} onClick={() => setActiveScreen('Home')}>
+                      <BackIcon />
+                  </button>
+                  <h2 style={styles.detailTitle}>AI Voice Assistant</h2>
+                  <div style={{width: 24}} />
+              </div>
+              <div ref={chatAreaRef} style={styles.chatArea} className="hide-scrollbar">
+                {messages.map(item => (
+                  <div key={item.id} style={{...styles.chatBubble, ...(item.sender === 'user' ? styles.userBubble : styles.botBubble)}}>
+                    {item.sender === 'bot' ? <FormattedBotResponse text={item.text} /> : <p style={styles.chatText}>{item.text}</p>}
+                  </div>
+                ))}
+                {isLoading && (
+                    <div style={{...styles.chatBubble, ...styles.botBubble}}>
+                        <p style={styles.chatText}>Thinking...</p>
+                    </div>
+                )}
+              </div>
+              {status && <p style={styles.statusText}>{status}</p>}
+              <div style={styles.chatInputContainer}>
+                <input
+                  type="text"
+                  style={styles.chatInput}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Type or click the mic..."
+                  disabled={isListening || isLoading}
+                />
+                <button style={{...styles.iconButton, ...(isListening ? styles.listening : {})}} onClick={handleVoiceInput} disabled={isLoading}>
+                  <MicIcon isListening={isListening}/>
+                </button>
+                <button style={{...styles.iconButton, ...styles.sendButton}} onClick={() => handleSend()} disabled={isListening || isLoading || input.trim() === ''}>
+                  <SendIcon />
+                </button>
+              </div>
+            </div>
+        );
+      };
+
+      const CartScreen = ({ cartItems, setActiveScreen, onCheckout }) => {
+          const total = cartItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+
+          return (
+              <div style={{...styles.screen, display: 'flex', flexDirection: 'column'}}>
+                  <div style={styles.detailHeader}>
+                      <button style={styles.iconButton} onClick={() => setActiveScreen('Home')}>
+                          <BackIcon />
+                      </button>
+                      <h2 style={styles.detailTitle}>Your Cart</h2>
+                      <div style={{width: 24}} />
+                  </div>
+                  {cartItems.length === 0 ? (
+                      <div style={styles.centered}>
+                          <p>Your cart is empty.</p>
+                      </div>
+                  ) : (
+                      <div style={{flex: 1, overflowY: 'auto'}} className="hide-scrollbar">
+                          {cartItems.map((item, index) => (
+                              <div key={item.product.id + item.type + index} style={styles.cartItem}>
+                                  <img src={item.product.image} style={styles.cartItemImage} alt={item.product.name} />
+                                  <div style={styles.cartItemInfo}>
+                                      <p style={styles.cartItemName}>{item.product.name}</p>
+                                      <p style={styles.cartItemPrice}>₹{(item.totalPrice || 0).toFixed(2)}</p>
+                                      <p style={styles.cartItemType}>
+                                        {item.type === 'Purchase' ? 'Purchase' : `Rental for ${item.rentalDays} days`}
+                                      </p>
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+                  {cartItems.length > 0 && (
+                      <div style={styles.cartTotalContainer}>
+                          <p style={styles.cartTotalText}>Total: ₹{total.toFixed(2)}</p>
+                          <button style={{...styles.button, ...styles.buyButton}} onClick={onCheckout}>
+                              Checkout
+                          </button>
+                      </div>
+                  )}
+              </div>
+          );
+      };
+
+      const ProfileScreen = ({ user, setActiveScreen, onLogout }) => {
+          return (
+              <div style={styles.screen}>
+                   <div style={styles.detailHeader}>
+                      <button style={styles.iconButton} onClick={() => setActiveScreen('Home')}>
+                          <BackIcon />
+                      </button>
+                      <h2 style={styles.detailTitle}>Profile & Support</h2>
+                      <div style={{width: 24}} />
+                  </div>
+                  <div style={styles.profileContainer}>
+                      <img src={'https://placehold.co/100x100/a3e635/ffffff?text=Farmer'} style={styles.profileImage} alt="Profile"/>
+                      <h2 style={styles.profileName}>{user.email || user.phone}</h2>
+                      <p style={styles.profileEmail}>Farmer</p>
+                  </div>
+                  <div style={styles.supportSection}>
+                      <h3 style={styles.sectionTitle}>Customer Support</h3>
+                      <div style={styles.supportItem}>
+                          <p>📞 Phone Support: 1800-FARM-HELP (1800-3276-4357)</p>
+                      </div>
+                       <div style={styles.supportItem}>
+                          <p>✉ Email Support: support@agriapp.com</p>
+                      </div>
+                       <div style={styles.supportItem}>
+                          <p>❓ FAQ Section</p>
+                      </div>
+                  </div>
+                  <div style={{padding: '16px'}}>
+                    <button onClick={onLogout} style={{...styles.button, ...styles.rentButton, width: '100%'}}>Logout</button>
+                  </div>
+              </div>
+          )
+      }
+
+      const SellScreen = ({ setActiveScreen, addProduct }) => {
+          const [step, setStep] = useState(1); // 1: type, 2: photo, 3: details
+          const [productData, setProductData] = useState({
+              type: '',
+              image: '',
+              name: '',
+              description: '',
+              price: '',
+              rentalPrice: '',
+          });
+
+          const handleTypeSelect = (type) => {
+              setProductData(prev => ({ ...prev, type }));
+              setStep(2);
+          };
+
+          const handlePhotoCapture = () => {
+              // Simulate photo capture
+              setProductData(prev => ({ ...prev, image: 'https://placehold.co/400x400/84cc16/ffffff?text=New+Product' }));
+              setStep(3);
+          };
+
+          const handleDetailSubmit = (e) => {
+              e.preventDefault();
+              const { name, description, price, rentalPrice } = e.target.elements;
+              if (!name.value || !description.value || (!price.value && !rentalPrice.value)) {
+                  alert("Please fill in name, description, and at least one price.");
+                  return;
+              }
+              const newProduct = {
+                  id: `${productData.type.charAt(0)}${Date.now()}`,
+                  name: name.value,
+                  description: description.value,
+                  price: parseFloat(price.value || rentalPrice.value), // Use rental if buy price is not set
+                  unit: rentalPrice.value ? 'day (rental)' : 'item',
+                  image: productData.image,
+              };
+              addProduct(newProduct, productData.type);
+              alert("Product listed successfully!");
+              setActiveScreen('Home');
+          };
+
+          return (
+              <div style={styles.screen}>
+                  <div style={styles.detailHeader}>
+                      <button style={styles.iconButton} onClick={() => setActiveScreen('Home')}>
+                          <BackIcon />
+                      </button>
+                      <h2 style={styles.detailTitle}>Sell Your Product</h2>
+                      <div style={{width: 24}} />
+                  </div>
+                  <div style={{padding: '16px'}}>
+                      {step === 1 && (
+                          <div>
+                              <h3>Step 1: Select Product Type</h3>
+                              <div style={{display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px'}}>
+                                  <button onClick={() => handleTypeSelect('seeds')} style={{...styles.button, ...styles.buyButton}}>Seeds</button>
+                                  <button onClick={() => handleTypeSelect('tractors')} style={{...styles.button, ...styles.buyButton}}>Equipment / Tractors</button>
+                                  <button onClick={() => handleTypeSelect('fertilizers')} style={{...styles.button, ...styles.buyButton}}>Fertilizers</button>
+                              </div>
+                          </div>
+                      )}
+                      {step === 2 && (
+                          <div>
+                              <h3>Step 2: Take a Photo</h3>
+                              <div style={styles.cameraView}>
+                                  <CameraIcon />
+                                  <p>Camera view placeholder</p>
+                              </div>
+                              <button onClick={handlePhotoCapture} style={{...styles.button, ...styles.buyButton, marginTop: '20px', width: '100%'}}>Capture Photo</button>
+                          </div>
+                      )}
+                      {step === 3 && (
+                          <div>
+                              <h3>Step 3: Enter Product Details</h3>
+                              <form onSubmit={handleDetailSubmit} style={{display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px'}}>
+                                  <input name="name" type="text" placeholder="Product Name" style={styles.loginInput} required />
+                                  <textarea name="description" placeholder="Product Description" style={{...styles.loginInput, height: '80px'}} required />
+                                  <input name="price" type="number" placeholder="Selling Price (₹)" style={styles.loginInput} />
+                                  <input name="rentalPrice" type="number" placeholder="Rental Amount per Day (₹)" style={styles.loginInput} />
+                                  <p style={{fontSize: '12px', color: '#6b7280'}}>Please enter a selling price or a rental amount, or both.</p>
+                                  <button type="submit" style={{...styles.button, ...styles.buyButton}}>List Product</button>
+                              </form>
+                          </div>
+                      )}
+                  </div>
+              </div>
+          );
+      };
+
+      // --- MAIN APP COMPONENT ---
+      function App() {
+        const [isLoggedIn, setIsLoggedIn] = useState(false);
+        const [currentUser, setCurrentUser] = useState(null);
+        const [activeScreen, setActiveScreen] = useState('Home');
+        const [selectedProduct, setSelectedProduct] = useState(null);
+        const [cartItems, setCartItems] = useState([]);
+        const [activeModal, setActiveModal] = useState(null); // null, 'rental', 'buy', 'payment'
+        const [checkoutItem, setCheckoutItem] = useState(null); // The item being processed
+        const [products, setProducts] = useState(MOCK_PRODUCTS_DATA);
+        
+        const handleLogin = (user) => {
+            setCurrentUser(user);
+            setIsLoggedIn(true);
+        };
+        const handleLogout = () => {
+            setCurrentUser(null);
+            setIsLoggedIn(false);
+            setCartItems([]); // Clear cart on logout
+        };
+
+        const addProduct = (product, type) => {
+            setProducts(prevProducts => {
+                const newProducts = { ...prevProducts };
+                if (newProducts[type]) {
+                    newProducts[type] = [product, ...newProducts[type]];
+                }
+                return newProducts;
+            });
+        };
+
+        const handleBuy = (product) => {
+            setCheckoutItem({ product, type: 'Purchase' });
+            setActiveModal('buy');
+        };
+
+        const handleRent = (product) => {
+            setCheckoutItem({ product, type: 'Rental' });
+            setActiveModal('rental');
+        };
+
+        const handleRentalSubmit = (e) => {
+            e.preventDefault();
+            const rentalDays = Number(e.target.elements.days.value);
+            if (rentalDays > 0) {
+                const updatedItem = { ...checkoutItem, rentalDays, totalPrice: checkoutItem.product.price * rentalDays };
+                setCheckoutItem(updatedItem);
+                setActiveModal('payment');
+            } else {
+                alert("Please enter a valid number of days.");
+            }
+        };
+
+        const handleBuySubmit = (e) => {
+            e.preventDefault();
+            const { name, address, phone } = e.target.elements;
+            if (name.value && address.value && phone.value) {
+                const updatedItem = { ...checkoutItem, totalPrice: checkoutItem.product.price };
+                setCheckoutItem(updatedItem);
+                setActiveModal('payment');
+            } else {
+                alert("Please fill in all delivery details.");
+            }
+        };
+
+        const handleCartCheckout = () => {
+            if (cartItems.length === 0) return;
+            const total = cartItems.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
+            setCheckoutItem({
+                product: { name: `${cartItems.length} items in cart` },
+                totalPrice: total,
+                isCartCheckout: true,
+            });
+            setActiveModal('payment');
+        };
+
+        const handlePaymentSubmit = (e) => {
+            e.preventDefault();
+            const upiId = e.target.elements.upiId.value;
+            if (upiId) {
+                if (checkoutItem.isCartCheckout) {
+                    alert(`Payment of ₹${checkoutItem.totalPrice.toFixed(2)} successful! Your order has been placed.`);
+                    setCartItems([]); // Clear the cart after successful payment
+                } else {
+                    addToCart(checkoutItem);
+                    alert(`Payment successful! Order for ${checkoutItem.product.name} has been placed.`);
+                }
+                setActiveModal(null);
+                setCheckoutItem(null);
+                setActiveScreen('Home');
+            } else {
+                alert("Please enter your UPI ID.");
+            }
+        };
+
+        const addToCart = (item) => {
+            const itemWithDefaults = { ...item, totalPrice: item.totalPrice || item.product.price || 0 };
+            setCartItems(prev => [...prev, itemWithDefaults]);
+        };
+
+        if (!isLoggedIn) {
+            return <LoginScreen onLogin={handleLogin} />;
+        }
+
+        const renderScreen = () => {
+          switch (activeScreen) {
+            case 'Home':
+              return <HomeScreen products={products} setActiveScreen={setActiveScreen} setSelectedProduct={setSelectedProduct} />;
+            case 'ProductDetail':
+              return <ProductDetailScreen product={selectedProduct} setActiveScreen={setActiveScreen} onBuy={handleBuy} onRent={handleRent}/>;
+            case 'Chatbot':
+              return <ChatbotScreen setActiveScreen={setActiveScreen} />;
+            case 'Cart':
+              return <CartScreen cartItems={cartItems} setActiveScreen={setActiveScreen} onCheckout={handleCartCheckout} />;
+            case 'Profile':
+              return <ProfileScreen user={currentUser} setActiveScreen={setActiveScreen} onLogout={handleLogout} />;
+            case 'Sell':
+              return <SellScreen setActiveScreen={setActiveScreen} addProduct={addProduct} />;
+            default:
+              return <HomeScreen products={products} setActiveScreen={setActiveScreen} setSelectedProduct={setSelectedProduct} />;
+          }
+        };
+
+        const getNavIconStyle = (screenName) => {
+            return activeScreen === screenName ? {...styles.navButton, ...styles.navButtonActive} : styles.navButton;
+        }
+
+        return (
+          <React.Fragment>
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>{renderScreen()}</div>
+            
+            {/* Modal Renderer */}
+            {activeModal === 'rental' && checkoutItem && (
+                <Modal onClose={() => setActiveModal(null)}>
+                    <h2>Rental Details</h2>
+                    <p>Product: {checkoutItem.product.name}</p>
+                    <form onSubmit={handleRentalSubmit}>
+                        <input name="days" type="number" placeholder="Enter rental duration (days)" style={styles.loginInput} min="1" required/>
+                        <button type="submit" style={{...styles.button, ...styles.buyButton, marginTop: '10px'}}>Proceed to Payment</button>
+                    </form>
+                </Modal>
+            )}
+            {activeModal === 'buy' && checkoutItem && (
+                <Modal onClose={() => setActiveModal(null)}>
+                    <h2>Delivery Details</h2>
+                    <p>Product: {checkoutItem.product.name}</p>
+                    <form onSubmit={handleBuySubmit} style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                        <input name="name" type="text" placeholder="Full Name" style={styles.loginInput} required />
+                        <input name="address" type="text" placeholder="Delivery Address" style={styles.loginInput} required />
+                        <input name="phone" type="tel" placeholder="Phone Number" style={styles.loginInput} required />
+                        <button type="submit" style={{...styles.button, ...styles.buyButton}}>Proceed to Payment</button>
+                    </form>
+                </Modal>
+            )}
+            {activeModal === 'payment' && checkoutItem && (
+                <Modal onClose={() => setActiveModal(null)}>
+                    <h2>UPI Payment</h2>
+                    <p>Payable Amount: ₹{(checkoutItem.totalPrice || 0).toFixed(2)}</p>
+                    <p>Item: {checkoutItem.product.name}</p>
+                    <form onSubmit={handlePaymentSubmit}>
+                        <input name="upiId" type="text" placeholder="Enter your UPI ID" style={styles.loginInput} required />
+                        <button type="submit" style={{...styles.button, ...styles.buyButton, marginTop: '10px'}}>Pay Now</button>
+                    </form>
+                </Modal>
+            )}
+
+            <div style={styles.navBar}>
+              <button style={getNavIconStyle('Home')} onClick={() => setActiveScreen('Home')}>
+                <HomeIcon />
+                <p style={styles.navText}>Home</p>
+              </button>
+              <button style={getNavIconStyle('Chatbot')} onClick={() => setActiveScreen('Chatbot')}>
+                <ChatIcon />
+                <p style={styles.navText}>AI Help</p>
+              </button>
+              <button style={getNavIconStyle('Cart')} onClick={() => setActiveScreen('Cart')}>
+                <CartIcon count={cartItems.length} />
+                <p style={styles.navText}>Cart</p>
+              </button>
+              <button style={getNavIconStyle('Profile')} onClick={() => setActiveScreen('Profile')}>
+                <ProfileIcon />
+                <p style={styles.navText}>Profile</p>
+              </button>
+            </div>
+          </React.Fragment>
+        );
+      }
+
+      // --- STYLES (JavaScript objects mimicking StyleSheet) ---
+      const styles = {
+        screen: { flex: 1, overflowY: 'auto', backgroundColor: '#f9fafb' },
+        centered: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' },
+        header: { padding: '16px' },
+        headerTitle: { fontSize: '28px', fontWeight: 'bold', color: '#1f2937', margin: 0 },
+        headerSubtitle: { fontSize: '16px', color: '#6b7280', margin: '4px 0 0 0' },
+        searchContainer: { display: 'flex', alignItems: 'center', backgroundColor: 'white', borderRadius: '999px', padding: '8px', margin: '0 16px 16px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' },
+        searchInput: { flex: 1, margin: '0 8px', fontSize: '16px', border: 'none', outline: 'none', backgroundColor: 'transparent' },
+        icon: { fontSize: '20px' },
+        iconButton: { backgroundColor: 'transparent', border: 'none', cursor: 'pointer', padding: '8px' },
+        listening: { animation: 'pulse 1.5s infinite', borderRadius: '50%' },
+        section: { marginBottom: '24px' },
+        sectionTitle: { fontSize: '20px', fontWeight: 'bold', margin: '0 16px 8px' },
+        horizontalScroll: { display: 'flex', overflowX: 'auto', paddingLeft: '8px', paddingBottom: '16px' },
+        productCard: { backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)', overflow: 'hidden', width: '160px', margin: '0 8px', flexShrink: 0, cursor: 'pointer' },
+        productImage: { width: '100%', height: '128px', objectFit: 'cover' },
+        productInfo: { padding: '8px' },
+        productName: { fontSize: '14px', fontWeight: 'bold', margin: 0 },
+        productPrice: { fontSize: '12px', color: '#4b5563', marginTop: '4px', margin: 0 },
+        navBar: { display: 'flex', justifyContent: 'space-around', backgroundColor: 'white', borderTop: '1px solid #e5e7eb', padding: '8px 0' },
+        navButton: { display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '8px', width: '70px', color: '#4f46e5' },
+        navButtonActive: { backgroundColor: '#eef2ff' },
+        navIcon: { fontSize: '24px' },
+        navText: { fontSize: '12px', margin: 0 },
+        cartBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#ef4444', color: 'white', borderRadius: '50%', padding: '2px 6px', fontSize: '10px', fontWeight: 'bold' },
+        detailHeader: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px' },
+        detailTitle: { fontSize: '20px', fontWeight: 'bold', margin: 0 },
+        detailImage: { width: '100%', height: '250px', objectFit: 'cover' },
+        detailInfoContainer: { padding: '16px' },
+        detailProductName: { fontSize: '24px', fontWeight: 'bold', margin: '0 0 8px 0' },
+        detailProductPrice: { fontSize: '20px', color: '#16a34a', marginBottom: '16px', margin: 0 },
+        detailProductDescription: { fontSize: '16px', color: '#374151', lineHeight: 1.5, margin: 0 },
+        buttonContainer: { display: 'flex', justifyContent: 'space-around', margin: '16px' },
+        button: { flex: 1, padding: '16px', borderRadius: '8px', alignItems: 'center', margin: '0 8px', border: 'none', color: 'white', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer' },
+        rentButton: { backgroundColor: '#f97316' },
+        buyButton: { backgroundColor: '#22c55e' },
+        chatArea: { flex: 1, padding: '10px', overflowY: 'auto', display: 'flex', flexDirection: 'column' },
+        chatBubble: { maxWidth: '80%', padding: '12px', borderRadius: '16px', marginBottom: '10px', wordWrap: 'break-word' },
+        userBubble: { backgroundColor: '#4f46e5', color: 'white', alignSelf: 'flex-end' },
+        botBubble: { backgroundColor: '#e5e7eb', color: '#1f2937', alignSelf: 'flex-start' },
+        chatText: { margin: 0, lineHeight: 1.5 },
+        statusText: { textAlign: 'center', color: '#6b7280', padding: '8px', fontStyle: 'italic', margin: 0 },
+        chatInputContainer: { display: 'flex', alignItems: 'center', padding: '8px', borderTop: '1px solid #d1d5db', backgroundColor: 'white' },
+        chatInput: { flex: 1, backgroundColor: '#f3f4f6', borderRadius: '20px', padding: '10px 16px', border: 'none', outline: 'none' },
+        sendButton: { backgroundColor: '#4f46e5', color: 'white', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+        cartItem: { display: 'flex', backgroundColor: 'white', padding: '12px', margin: '4px 8px', borderRadius: '8px', alignItems: 'center' },
+        cartItemImage: { width: '60px', height: '60px', borderRadius: '8px', objectFit: 'cover' },
+        cartItemInfo: { flex: 1, marginLeft: '12px' },
+        cartItemName: { fontSize: '16px', fontWeight: 'bold', margin: 0 },
+        cartItemPrice: { fontSize: '14px', color: '#16a34a', margin: '2px 0 0 0' },
+        cartItemType: { fontSize: '12px', color: '#6b7280', margin: '2px 0 0 0' },
+        cartTotalContainer: { padding: '16px', borderTop: '1px solid #e5e7eb', backgroundColor: 'white' },
+        cartTotalText: { fontSize: '18px', fontWeight: 'bold', marginBottom: '8px', margin: 0 },
+        profileContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px' },
+        profileImage: { width: '100px', height: '100px', borderRadius: '50%', marginBottom: '12px' },
+        profileName: { fontSize: '22px', fontWeight: 'bold', margin: 0 },
+        profileEmail: { fontSize: '16px', color: '#6b7280', margin: '4px 0 0 0' },
+        supportSection: { marginTop: '24px', padding: '0 16px' },
+        supportItem: { backgroundColor: 'white', padding: '16px', borderRadius: '8px', marginBottom: '8px', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' },
+        loginContainer: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '20px', backgroundColor: '#f9fafb' },
+        loginTitle: { fontSize: '32px', fontWeight: 'bold', color: '#4f46e5', marginBottom: '20px' },
+        loginToggle: { display: 'flex', marginBottom: '20px', border: '1px solid #d1d5db', borderRadius: '8px', overflow: 'hidden' },
+        toggleButton: { padding: '10px 20px', border: 'none', backgroundColor: 'white', cursor: 'pointer', fontSize: '16px' },
+        toggleButtonActive: { padding: '10px 20px', border: 'none', backgroundColor: '#4f46e5', color: 'white', cursor: 'pointer', fontSize: '16px' },
+        loginForm: { width: '100%', maxWidth: '350px', display: 'flex', flexDirection: 'column', gap: '15px' },
+        loginInput: { padding: '15px', fontSize: '16px', borderRadius: '8px', border: '1px solid #d1d5db' },
+        modalBackdrop: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
+        modalContent: { backgroundColor: 'white', padding: '20px', borderRadius: '8px', width: '90%', maxWidth: '400px', position: 'relative' },
+        modalCloseButton: { position: 'absolute', top: '10px', right: '10px', backgroundColor: 'transparent', border: 'none', fontSize: '24px', cursor: 'pointer' },
+        cameraView: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '200px', backgroundColor: '#e5e7eb', borderRadius: '8px', border: '2px dashed #9ca3af', color: '#6b7280' },
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+</body>
+</html>
